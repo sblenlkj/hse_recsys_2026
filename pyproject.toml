@@ -20,11 +20,6 @@ sasrec = [
     "lightning==2.5.6",
     "torchmetrics==1.8.2",
 ]
-dev = [
-    "nbclient==0.10.2",
-    "nbformat==5.10.4",
-    "pytest==8.3.5",
-]
 
 [build-system]
 requires = ["hatchling==1.27.0"]
@@ -32,7 +27,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/recsys"]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-testpaths = ["tests"]
