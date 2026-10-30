@@ -43,6 +43,30 @@ def build_submission(sample: pd.DataFrame, recommendations: Mapping[str, Sequenc
     return output
 
 
+def validate_submission(
+    submission: pd.DataFrame,
+    sample: pd.DataFrame,
+    events: pd.DataFrame,
+    catalog: Sequence[str],
+    k: int = 10,
+) -> None:
+    """Проверяет schema, sample order, IDs, uniqueness и full-history seen filtering."""
+    if list(submission.columns) != ["user_id", "item_id"]:
+        raise ValueError("Submission должен содержать user_id, item_id")
+    if submission["user_id"].astype(str).tolist() != sample["user_id"].astype(str).tolist():
+        raise ValueError("Порядок user_id отличается от submission_sample.csv")
+    rows = submission["item_id"].astype(str).str.split()
+    if rows.map(len).ne(k).any() or rows.map(lambda values: len(set(values))).ne(k).any():
+        raise ValueError(f"Каждая строка должна содержать {k} уникальных items")
+    catalog_set = set(map(str, catalog))
+    if rows.map(lambda values: set(values) <= catalog_set).eq(False).any():
+        raise ValueError("Submission содержит item_id вне каталога")
+    seen = events.groupby("user_id")["item_id"].agg(set).to_dict()
+    for user_id, values in zip(submission["user_id"].astype(str), rows, strict=True):
+        if set(values) & seen.get(user_id, set()):
+            raise ValueError(f"Seen item в рекомендациях пользователя {user_id}")
+
+
 def write_submission(path: str | Path, frame: pd.DataFrame) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

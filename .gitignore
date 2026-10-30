@@ -11,5 +11,6 @@ wheels/
 .agents*
 .artifacts/*
 AGENTS.md
+tunnel.md
 
-tests/
+tests*

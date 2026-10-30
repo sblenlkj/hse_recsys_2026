@@ -1,62 +1,72 @@
 # HSE RecSys Challenge 2026
 
-Компактное воспроизводимое решение, которое строит 10 рекомендаций фильмов на пользователя. Быстрые этапы EDA → Popularity → ItemKNN → EASE находятся в основной тетрадке; GPU-обучение RePlay SASRec вынесено в отдельный автономный Colab. Все модели используют одинаковый хронологический holdout: последние 20% истории каждого пользователя.
+Финальное решение рекомендует 10 unseen-фильмов каждому пользователю. Быстрые классические модели и обучение SASRec разделены: обычный локальный запуск не требует GPU, PyTorch или RePlay.
 
 ## Структура
 
 ```text
-final_solution.ipynb   # быстрые EDA и классические модели
-sasrec_colab_standalone.ipynb  # автономное GPU-обучение и inference
-hypotheses.md          # история гипотез и подтверждённых результатов
-src/recsys/data.py     # загрузка, split, mappings
-src/recsys/metrics.py  # Recall@10
-src/recsys/classical.py
-src/recsys/sequential.py
-src/recsys/submission.py
+notebooks/final_solution.ipynb            # EDA, 80/20, Popularity, ItemKNN, EASE, submissions
+notebooks/sasrec_colab_standalone.ipynb   # единственное место обучения SASRec
+src/recsys/                               # data, metrics, classical, submission, SASRec inference
+sasrec_outputs/sasrec_full_bundle.zip     # готовая full-refit модель + mappings/config/manifest
+sasrec_outputs/submission_sasrec.csv      # отправленный Kaggle CSV
+submissions/                              # нумерованные результаты этапов
 ```
 
-Ratings не порогуются: любое событие участвует в бинарной истории и любое validation-событие является target. Уже встречавшиеся items исключаются. Строковые item IDs сохраняются без преобразования в итоговом CSV.
+Исходные CSV читаются из локальной `data/`: `events.csv`, `user_features.csv`, `item_features.csv`, `submission_sample.csv`. Не публикуйте данные соревнования и новые веса без проверки правил и размера файлов.
 
-## Быстрые этапы
+## Результаты и submissions
 
-`final_solution.ipynb` выполняет EDA, 80/20 split, Popularity, ItemKNN и EASE. Обычный Run All не импортирует RePlay/PyTorch, не требует GPU и не запускает SASRec.
+| Файл | Эксперимент | Local Recall@10 | Kaggle Recall@10 |
+|---|---|---:|---:|
+| `1_submission_itemknn.csv` | ItemKNN, текущий 80/20; full-data refit | 0.055767* | 0.0594* |
+| `2_submission_itemknn_genre.csv` | отдельная ранняя линия 90/10: implicit ItemKNN + genre, α=0.25 | 0.057316* | неизвестен |
+| `3_submission_ease.csv` | EASE, λ=1000; full-data refit | 0.065038* | 0.0860* |
+| `4_submission_sasrec.csv` | RePlay SASRec, текущий full-refit checkpoint | **0.141219**, epoch 49 | **0.2842** |
 
-## SASRec в чистом Colab
+Звёздочкой отмечены исторические показатели соответствующих экспериментов; новый полный validation run при финальной очистке не выполнялся. Score SASRec 0.2842 подтверждён пользователем по Kaggle для неизменённого `sasrec_outputs/submission_sasrec.csv` от 30.10.2026. Нумерованная копия №4 побайтно совпадает с ним.
 
-1. Загрузите только `sasrec_colab_standalone.ipynb` в Google Colab и включите **T4 GPU**.
-2. Нажмите **Runtime → Run all**.
-3. В upload-диалоге выберите `events.csv`, `user_features.csv`, `item_features.csv`, `submission_sample.csv`.
-4. После validation и full-data refit скачайте `submission_sasrec.csv` и `sasrec_outputs.zip`. Архив содержит оба checkpoints, learning curves, mappings/config/version manifests и checkpoint bundles.
-
-Standalone notebook не требует GitHub, Google Drive, `src/`, `README.md`, `pyproject.toml` или `pip install -e .`. Для inference из готового bundle установите в ней `RELOAD_ONLY=True`, загрузите `sasrec_full_bundle.zip` и те же CSV: bundle содержит модель, но не пользовательские истории.
-
-Для локального окружения:
+## Быстрый локальный запуск
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[sasrec,dev]'
-jupyter lab final_solution.ipynb
+uv sync --extra dev
+uv run --with jupyterlab jupyter lab notebooks/final_solution.ipynb
 ```
 
-Зависимости закреплены в `pyproject.toml` и `uv.lock`; `replay-rec==0.22.0`, Lightning и TorchMetrics зафиксированы, PyTorch ограничен совместимой веткой 2.x. `uv.lock` можно использовать через `uv sync --extra sasrec --extra dev`.
+Run All выполняет EDA, chronological 80/20, local Popularity/ItemKNN/EASE, затем full-data refit ItemKNN и выбранного EASE. Он создаёт submissions №1 и №3, проверяет восстановленный исторический №2 и побайтно копирует сохранённый SASRec в №4. SASRec не обучается.
 
-## Checkpoint и inference без обучения
+## Обучение SASRec
 
-После validation сохраняется лучший checkpoint. Финальный bundle содержит `model.ckpt`, mappings исходных ID, SASRec config, метрики и версии библиотек:
+Откройте `notebooks/sasrec_colab_standalone.ipynb` в чистом Google Colab, включите T4 GPU, загрузите четыре CSV и выполните Run All. Тетрадка автономна и содержит sliding windows, next-item loss, validation checkpoint selection и отдельный full-data refit. Существующую модель ради inference переобучать не нужно.
+
+## Inference из готового bundle
+
+Bundle уже доступен по пути `sasrec_outputs/sasrec_full_bundle.zip`; он содержит `model.ckpt`, исходные string-ID mappings, config, версии и learning curves metadata. История interactions в bundle не входит.
+
+```bash
+uv sync --extra sasrec
+```
 
 ```python
-from recsys.sequential import load_checkpoint_bundle, restore_replay_model
+import pandas as pd
+from recsys.data import load_data
+from recsys.sequential import submission_from_bundle
 
-checkpoint, mappings, config, manifest = load_checkpoint_bundle("outputs/sasrec_bundle.zip")
-model = restore_replay_model(checkpoint, config, len(mappings.item_ids))
+tables = load_data("data")
+submission, manifest = submission_from_bundle(
+    "sasrec_outputs/sasrec_full_bundle.zip",
+    tables["events"],
+    tables["sample"],
+    device="cpu",  # или "cuda"
+)
+submission.to_csv("submissions/4_submission_sasrec_inferred.csv", index=False)
 ```
 
-Reload-only раздел автономной тетрадки загружает bundle и формирует рекомендации без вызова fit. Submission сохраняется в порядке пользователей из `submission_sample.csv`, имеет колонки `user_id,item_id` и ровно 10 уникальных unseen items в каждой строке.
+В конце основной тетрадки тот же путь доступен под флагом `RUN_SASREC_INFERENCE=False`. При `False` быстрый Run All не устанавливает тяжёлые зависимости.
 
 ## Ограничения
 
-- Исторические метрики в тетрадке подписаны как исторические и не выдаются за новый запуск.
-- Полный SASRec требует GPU; EASE требует плотную item-item матрицу в памяти.
-- Способ формирования скрытого Kaggle test и официальный relevance threshold неизвестны.
-- User/item features показаны в EDA, но Popularity, ItemKNN, EASE и SASRec их не используют.
+- Hidden-test relevance policy неизвестна; локальный holdout — прокси.
+- EASE использует плотную item-item матрицу.
+- Текущий checkpoint был фактически обучен в Colab, но его обучение не воспроизводилось в рамках финальной очистки.
+- ALS, BERT4Rec и CatBoost не входят в финальную линию.
