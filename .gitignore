@@ -8,12 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
-
-tunnel.md
 .agents*
 .artifacts/*
-!.artifacts/tasks/
-!.artifacts/reports/
-!.artifacts/tasks/*.md
-!.artifacts/reports/*.md
 AGENTS.md
+
+tests/

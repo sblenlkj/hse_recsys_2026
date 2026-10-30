@@ -1,22 +1,22 @@
-"""Evaluation metrics."""
+"""Метрики локальной валидации."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import Hashable
 
 
 def recall_at_k(
-    ground_truth: Mapping[int, Sequence[int]],
-    recommendations: Mapping[int, Sequence[int]],
+    recommendations: Mapping[Hashable, Sequence[Hashable]],
+    ground_truth: Mapping[Hashable, Sequence[Hashable] | set[Hashable]],
     k: int = 10,
 ) -> float:
-    """Return macro Recall@k over users with non-empty ground truth.
+    """Macro Recall@k по пользователям с непустым target.
 
-    Users without ground truth are excluded. Duplicate recommendations are an
-    error rather than silently receiving extra credit.
+    Дубликаты рекомендаций считаются ошибкой, а не дополнительными попаданиями.
     """
     if k <= 0:
-        raise ValueError("k must be positive")
+        raise ValueError("k должен быть положительным")
 
     recalls: list[float] = []
     for user, relevant_items in ground_truth.items():
@@ -25,6 +25,8 @@ def recall_at_k(
             continue
         predicted = list(recommendations.get(user, ()))[:k]
         if len(predicted) != len(set(predicted)):
-            raise ValueError(f"duplicate recommendations for user {user}")
+            raise ValueError(f"Повторные рекомендации для {user}")
         recalls.append(len(relevant.intersection(predicted)) / len(relevant))
-    return sum(recalls) / len(recalls) if recalls else 0.0
+    if not recalls:
+        raise ValueError("Нет пользователей с непустым target")
+    return float(sum(recalls) / len(recalls))

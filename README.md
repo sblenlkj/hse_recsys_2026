@@ -1,111 +1,62 @@
-# UV RecSys
+# HSE RecSys Challenge 2026
 
-Учебный проект команды для **HSE RecSys Challenge 2026**.
+Компактное воспроизводимое решение, которое строит 10 рекомендаций фильмов на пользователя. Быстрые этапы EDA → Popularity → ItemKNN → EASE находятся в основной тетрадке; GPU-обучение RePlay SASRec вынесено в отдельный автономный Colab. Все модели используют одинаковый хронологический holdout: последние 20% истории каждого пользователя.
 
-Цель проекта — построить воспроизводимую рекомендательную систему фильмов, которая для каждого пользователя возвращает **10 рекомендаций** и превосходит заданные преподавателем baseline по **Recall@10**.
-
-## Что важно в проекте
-
-Мы не рассматриваем соревнование как попытку сразу подобрать «самую сильную модель». Основной формат работы:
-
-1. изучить данные и корректно построить локальную валидацию;
-2. получить простые воспроизводимые baseline;
-3. сформулировать гипотезы;
-4. проверить каждую гипотезу локально и, когда это оправдано, на Kaggle;
-5. фиксировать результат и вывод;
-6. постепенно перейти к ансамблям и двухстадийной системе.
-
-История экспериментов и путь рассуждений являются частью сдаваемого решения.
-
-## Ключевое правило валидации
-
-В предоставленных данных `timestamp` является относительной координатой внутри истории пользователя, а не общей календарной датой. Поэтому абсолютный global timestamp cutoff использовать нельзя.
-
-Основной leakage-safe protocol: **chronological 90/10 per user** — для каждого пользователя первые 90% событий по timestamp идут в train, последние 10% в validation.
-
-Нельзя:
-- строить признаки по validation-событиям;
-- считать popularity, item statistics, user statistics, embeddings или candidate scores с использованием holdout;
-- смешивать train и validation при подготовке последовательностей;
-- сравнивать эксперименты, полученные на разных split, как будто это одна метрика.
-
-Дополнительно позже проверим masked 10% split как возможную имитацию скрытого Kaggle test, но не будем заменять им основной leakage-safe protocol без явной причины.
-
-## Планируемые направления
-
-### Базовые модели
-- Popularity / Top Popular;
-- user/item similarity;
-- ItemKNN;
-- ALS;
-- другие простые collaborative filtering подходы.
-
-### Sequential models
-- SASRec;
-- BERT4Rec;
-- при необходимости GPT4Rec / другие transformer-based модели.
-
-Для SASRec/BERT4Rec преподаватель рекомендует библиотеку **RePlay**.
-
-### Двухстадийная рекомендация
-1. Несколько candidate generators.
-2. Объединение кандидатов.
-3. User / item / user-item features.
-4. Ranking / reranking.
-5. Top-10 recommendations.
-
-В качестве candidate generators рассматриваем ALS, KNN, popularity, sequential models и другие методы.
-
-### Ансамбли
-Будем проверять:
-- union кандидатов;
-- score blending;
-- rank blending;
-- использование score/rank/source каждой модели как признаков;
-- reranking CatBoost/LightGBM;
-- сочетание transformer и non-transformer решений.
-
-## Структура проекта
+## Структура
 
 ```text
-hse_recsys_competition/
-├── data/                 # исходные данные соревнования
-├── notebooks/            # запускаемые ноутбуки и исследовательские эксперименты
-├── src/
-│   └── recsys/        # переиспользуемый Python-код
-├── notes/
-│   ├── plan.md           # рабочий план проекта
-│   ├── teacher_rules.md  # требования преподавателя и ссылки
-│   └── hypotheses.md     # журнал гипотез и экспериментов
-└── README.md
+final_solution.ipynb   # быстрые EDA и классические модели
+sasrec_colab_standalone.ipynb  # автономное GPU-обучение и inference
+hypotheses.md          # история гипотез и подтверждённых результатов
+src/recsys/data.py     # загрузка, split, mappings
+src/recsys/metrics.py  # Recall@10
+src/recsys/classical.py
+src/recsys/sequential.py
+src/recsys/submission.py
 ```
 
-## Принцип организации кода
+Ratings не порогуются: любое событие участвует в бинарной истории и любое validation-событие является target. Уже встречавшиеся items исключаются. Строковые item IDs сохраняются без преобразования в итоговом CSV.
 
-- `notebooks/` — EDA, быстрые эксперименты, запуск отдельных моделей и итогового pipeline;
-- `src/recsys/` — общая логика загрузки данных, split, метрик, candidate generation, feature engineering и моделей;
-- `notes/` — решения, гипотезы, результаты и требования курса.
+## Быстрые этапы
 
-Итоговое лучшее решение должно запускаться **одной командой или одним полным запуском одного ноутбука**.
+`final_solution.ipynb` выполняет EDA, 80/20 split, Popularity, ItemKNN и EASE. Обычный Run All не импортирует RePlay/PyTorch, не требует GPU и не запускает SASRec.
 
-## С чего начинаем
+## SASRec в чистом Colab
 
-Первый этап:
+1. Загрузите только `sasrec_colab_standalone.ipynb` в Google Colab и включите **T4 GPU**.
+2. Нажмите **Runtime → Run all**.
+3. В upload-диалоге выберите `events.csv`, `user_features.csv`, `item_features.csv`, `submission_sample.csv`.
+4. После validation и full-data refit скачайте `submission_sasrec.csv` и `sasrec_outputs.zip`. Архив содержит оба checkpoints, learning curves, mappings/config/version manifests и checkpoint bundles.
 
-1. EDA файлов `events.csv`, `user_features.csv`, `item_features.csv`.
-2. Проверка времени, пользователей, фильмов, sparsity и распределения ratings.
-3. Фиксация leakage-safe chronological 90/10 split.
-4. Реализация локального `Recall@10`.
-5. Popularity baseline.
-6. ALS / ItemKNN.
-7. SASRec через RePlay.
-8. Сравнение локальной метрики с Kaggle.
-9. После первых результатов — выбор следующих гипотез.
+Standalone notebook не требует GitHub, Google Drive, `src/`, `README.md`, `pyproject.toml` или `pip install -e .`. Для inference из готового bundle установите в ней `RELOAD_ONLY=True`, загрузите `sasrec_full_bundle.zip` и те же CSV: bundle содержит модель, но не пользовательские истории.
 
-Описание данных и validation: [notes/data.md](notes/data.md).
+Для локального окружения:
 
-Подробный план: [notes/plan.md](notes/plan.md).
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[sasrec,dev]'
+jupyter lab final_solution.ipynb
+```
 
-Правила преподавателя: [notes/teacher_rules.md](notes/teacher_rules.md).
+Зависимости закреплены в `pyproject.toml` и `uv.lock`; `replay-rec==0.22.0`, Lightning и TorchMetrics зафиксированы, PyTorch ограничен совместимой веткой 2.x. `uv.lock` можно использовать через `uv sync --extra sasrec --extra dev`.
 
-Журнал гипотез: [notes/hypotheses.md](notes/hypotheses.md).
+## Checkpoint и inference без обучения
+
+После validation сохраняется лучший checkpoint. Финальный bundle содержит `model.ckpt`, mappings исходных ID, SASRec config, метрики и версии библиотек:
+
+```python
+from recsys.sequential import load_checkpoint_bundle, restore_replay_model
+
+checkpoint, mappings, config, manifest = load_checkpoint_bundle("outputs/sasrec_bundle.zip")
+model = restore_replay_model(checkpoint, config, len(mappings.item_ids))
+```
+
+Reload-only раздел автономной тетрадки загружает bundle и формирует рекомендации без вызова fit. Submission сохраняется в порядке пользователей из `submission_sample.csv`, имеет колонки `user_id,item_id` и ровно 10 уникальных unseen items в каждой строке.
+
+## Ограничения
+
+- Исторические метрики в тетрадке подписаны как исторические и не выдаются за новый запуск.
+- Полный SASRec требует GPU; EASE требует плотную item-item матрицу в памяти.
+- Способ формирования скрытого Kaggle test и официальный relevance threshold неизвестны.
+- User/item features показаны в EDA, но Popularity, ItemKNN, EASE и SASRec их не используют.
