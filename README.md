@@ -26,6 +26,7 @@ submissions/                         # проверенные Kaggle CSV
 sasrec_outputs/                      # checkpoint, bundle, learning curves, оригинальный CSV
 docs/architecture.md
 docs/hypotheses.md
+data/                                # events.csv, user_features.csv, item_features.csv, submission_sample.csv
 ```
 
 ## Быстрый запуск
